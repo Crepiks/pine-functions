@@ -15,35 +15,45 @@ interface Location {
 }
 
 export const helloWorld = functions.https.onRequest(
-  async (request, response) => {
-    functions.logger.info("Hello logs!", { structuredData: true });
-    response.send("Hello, World!");
-  }
+    async (request, response) => {
+      functions.logger.info("Hello logs!", { structuredData: true });
+      response.send("Hello, World!");
+    }
 );
 
 export const getImageLocation = functions.https.onRequest(
-  async (request, response) => {
-    const { url } = request.query;
-    if (!url) {
-      response.status(422).send("No image URL is provided");
-      return;
+    async (request, response) => {
+      try {
+        const { url } = request.query;
+        if (!url) {
+          response.status(422).send("No image URL is provided");
+          return;
+        }
+        const location = await getLocationMetaData((url as unknown) as string);
+        response.send(location);
+      } catch (e) {
+        functions.logger.error(e);
+      }
     }
-    const location = await getLocationMetaData((url as unknown) as string);
-    response.send(location);
-  }
 );
 
 export const getImageCity = functions.https.onRequest(
-  async (request, response) => {
-    const { url } = request.query;
-    if (!url) {
-      response.status(422).send("No image URL is provided");
-      return;
+    async (request, response) => {
+      try {
+        const { url } = request.query;
+        if (!url) {
+          response.status(422).send("No image URL is provided");
+          return;
+        }
+        const { lat, lon } = await getLocationMetaData(
+        (url as unknown) as string
+        );
+        const city = await getCityNameByLocation(lat, lon);
+        response.send(city);
+      } catch (e) {
+        functions.logger.error(e);
+      }
     }
-    const { lat, lon } = await getLocationMetaData((url as unknown) as string);
-    const city = await getCityNameByLocation(lat, lon);
-    response.send(city);
-  }
 );
 
 const getLocationMetaData = (source: string): Promise<Location> => {
