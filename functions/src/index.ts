@@ -1,5 +1,6 @@
 import * as functions from "firebase-functions";
 import * as imagemagick from "imagemagick";
+import nodeGeocoder, { Options } from "node-geocoder";
 
 // import { Storage } from "@google-cloud/storage";
 // const storage = new Storage();
@@ -7,6 +8,11 @@ import * as imagemagick from "imagemagick";
 
 // Start writing Firebase Functions
 // https://firebase.google.com/docs/functions/typescript
+
+interface Location {
+  lat: number;
+  lon: number;
+}
 
 export const helloWorld = functions.https.onRequest(
   async (request, response) => {
@@ -27,7 +33,20 @@ export const getImageLocation = functions.https.onRequest(
   }
 );
 
-const getLocationMetaData = (source: string) => {
+export const getImageCity = functions.https.onRequest(
+  async (request, response) => {
+    const { url } = request.query;
+    if (!url) {
+      response.status(422).send("No image URL is provided");
+      return;
+    }
+    const { lat, lon } = await getLocationMetaData((url as unknown) as string);
+    const city = await getCityNameByLocation(lat, lon);
+    response.send(city);
+  }
+);
+
+const getLocationMetaData = (source: string): Promise<Location> => {
   return new Promise((resolve, reject) => {
     imagemagick.readMetadata(source, (error: Error, meta) => {
       if (error) {
@@ -53,4 +72,23 @@ const parseGPSLocation = (values: string[]) => {
   const value = degrees + minutes / 60 + seconds / 3600;
 
   return value;
+};
+
+const getCityNameByLocation = (lat: number, lon: number) => {
+  const options = {
+    provider: "yandex",
+    httpAdapter: "https",
+    apiKey: "9e282b5f-f010-4230-a264-56d192576794",
+    formatter: "json",
+  };
+  const geocoder = nodeGeocoder(options as Options);
+
+  return new Promise((resolve, reject) => {
+    geocoder.reverse({ lat, lon }, (error, res) => {
+      if (error) reject(error);
+
+      const cityName = res[0].city;
+      resolve(cityName);
+    });
+  });
 };
