@@ -12,63 +12,65 @@ const bucket = storage.bucket("notsoserious-c6690.appspot.com");
 // Start writing Firebase Functions
 // https://firebase.google.com/docs/functions/typescript
 
-interface Location {
+interface ImageMeta {
   lat: number | null;
   lon: number | null;
+  deviceModel: string | null;
+  createdAt: string | null;
 }
 
 export const helloWorld = functions.https.onRequest(
-  async (request, response) => {
-    functions.logger.info("Hello logs!", { structuredData: true });
-    response.send("Hello, World!");
-  }
+    async (request, response) => {
+      functions.logger.info("Hello logs!", { structuredData: true });
+      response.send("Hello, World!");
+    }
 );
 
-export const getImageLocation = functions.https.onRequest(
-  async (request, response) => {
-    try {
-      const url = (request.query.url as unknown) as string;
-      if (!url) {
-        response.status(422).send("No image URL is provided");
-        return;
+export const getImageMeta = functions.https.onRequest(
+    async (request, response) => {
+      try {
+        const url = (request.query.url as unknown) as string;
+        if (!url) {
+          response.status(422).send("No image URL is provided");
+          return;
+        }
+
+        const tempFilePath = await downloadImageFromStorage(url);
+
+        const meta = await getImageMetaData(tempFilePath);
+        response.send({ meta });
+      } catch (e) {
+        functions.logger.error(e);
+        response.status(500).send("Internal error");
       }
-
-      const tempFilePath = await downloadImageFromStorage(url);
-
-      const location = await getLocationMetaData(tempFilePath);
-      response.send(location);
-    } catch (e) {
-      functions.logger.error(e);
-      response.status(500).send("Internal error");
     }
-  }
 );
 
 export const getImageCity = functions.https.onRequest(
-  async (request, response) => {
-    try {
-      const url = (request.query.url as unknown) as string;
-      if (!url) {
-        response.status(422).send("No image URL is provided");
-        return;
+    async (request, response) => {
+      try {
+        const url = (request.query.url as unknown) as string;
+        if (!url) {
+          response.status(422).send("No image URL is provided");
+          return;
+        }
+
+        const tempFilePath = await downloadImageFromStorage(url);
+        const { lat, lon } = await getImageMetaData(tempFilePath);
+
+        let city: string;
+        if (!lat || !lon) {
+          city = "Не определено";
+        } else {
+          city = await getCityNameByLocation(lat, lon);
+        }
+
+        response.send({ city });
+      } catch (e) {
+        functions.logger.error(e);
+        response.status(500).send("Internal error");
       }
-
-      const tempFilePath = await downloadImageFromStorage(url);
-      const { lat, lon } = await getLocationMetaData(tempFilePath);
-
-      let city: string;
-      if (!lat || !lon) {
-        city = "Не определено";
-      } else {
-        city = await getCityNameByLocation(lat, lon);
-      }
-
-      response.send({ city });
-    } catch (e) {
-      functions.logger.error(e);
-      response.status(500).send("Internal error");
     }
-  }
 );
 
 const downloadImageFromStorage = async (source: string): Promise<string> => {
@@ -90,7 +92,7 @@ const downloadImageFromStorage = async (source: string): Promise<string> => {
   return tempFilePath;
 };
 
-const getLocationMetaData = (source: string): Promise<Location> => {
+const getImageMetaData = (source: string): Promise<ImageMeta> => {
   return new Promise((resolve, reject) => {
     imagemagick.readMetadata(source, (error: Error, meta) => {
       if (error) {
@@ -103,9 +105,14 @@ const getLocationMetaData = (source: string): Promise<Location> => {
         const parsedLat = parseGPSLocation(lat);
         const parsedLon = parseGPSLocation(lon);
 
-        resolve({ lat: parsedLat, lon: parsedLon });
+        resolve({
+          lat: parsedLat,
+          lon: parsedLon,
+          deviceModel: meta.exif.model,
+          createdAt: meta.exif.dateTime,
+        });
       } else {
-        resolve({ lat: null, lon: null });
+        resolve({ lat: null, lon: null, deviceModel: null, createdAt: null });
       }
     });
   });
